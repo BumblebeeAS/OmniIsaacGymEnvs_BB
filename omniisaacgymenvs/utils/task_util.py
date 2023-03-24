@@ -63,7 +63,7 @@ def initialize_task(config, env, init_sim=True):
         "ShadowHand": ShadowHandTask,
         "ShadowHandOpenAI_FF": ShadowHandTask,
         "ShadowHandOpenAI_LSTM": ShadowHandTask,
-        "AUV": AUVTaskRL
+        "AUVTask": AUVTaskRL
     }
 
     cfg = sim_config.config
