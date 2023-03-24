@@ -57,10 +57,10 @@ class AUVTaskRL(RLTask):
 
         self._bbauvs = BBAUVView(prim_path_exp="/World/envs/.*/BBAUV", name="AUV_view")
         scene.add(self._bbauvs)
-        # scene.add(self._bbauvs.buoyancy)
-        # scene.add(self._bbauvs.damping)
-        # scene.add(self._bbauvs.controller)
-        # scene.add(self._bbauvs.disturbance)
+        scene.add(self._bbauvs.buoyancy)
+        scene.add(self._bbauvs.damping)
+        scene.add(self._bbauvs.controller)
+        scene.add(self._bbauvs.disturbance)
 
     def get_auv(self):
         # copter = Crazyflie(prim_path=self.default_zero_env_path + "/Crazyflie", name="crazyflie",
@@ -88,29 +88,28 @@ class AUVTaskRL(RLTask):
         if not self._env._world.is_playing():
             return
         # print("pre physics step")
-        reset_env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1).to(self._device)
+        reset_env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
 
         if len(reset_env_ids) > 0:
             self.reset_idx(reset_env_ids)
 
             # store action
-        self.thrust = actions.clone().to(self._device)
-
+        actions = actions.clone().to(self._device)
+        self.thrust = actions
         # Apply forces
         # apply bouyancy force
-        self.position, self.orientation = self._bbauvs.get_world_poses(clone=False)
         self.buoyancy_force = quat_rotate(quat_conjugate(self.orientation), self.buoyancy)
-        self.buoyancy_offset = quat_rotate(self.orientation, self.cob)
-        # self._bbauvs.buoyancy.apply_forces_and_torques_at_pos(forces=self.buoyancy_force,
-        #                                                       positions=self.buoyancy_offset,
-        #                                                       is_global=False)
+        # self.buoyancy_offset = quat_rotate(self.orientation, self.cob)
+        self._bbauvs.buoyancy.apply_forces_and_torques_at_pos(forces=self.buoyancy_force,
+                                                              positions=self.cob,
+                                                              is_global=False)
         # # apply disturbances
         # apply damping forces
 
         # apply controller forces
-        # self._bbauvs.controller.apply_forces_and_torques_at_pos(forces=self.thrust[..., 0:3],
-        #                                                         torques=self.thrust[..., 3:6],
-        #                                                         is_global=False)
+        self._bbauvs.controller.apply_forces_and_torques_at_pos(forces=self.thrust[..., 0:3],
+                                                                torques=self.thrust[..., 3:6],
+                                                                is_global=False)
     
     def post_reset(self):
         # print("post reset")
@@ -148,41 +147,31 @@ class AUVTaskRL(RLTask):
         self.rew_buf[:] = pos_reward + pos_reward * (up_reward + spin_reward) - effort_reward 
 
     def reset_idx(self, env_ids):
-        print("reset idx ", env_ids)
+        # print("reset idx ", env_ids)
 
         num_resets = len(env_ids)
-        # print("initial pose", self.initial_pos[0])
         # reset robots
-        # self._bbauvs.set_world_poses(positions=self.initial_pos[env_ids].clone(),
-        #                              indices=env_ids)
-
-        root_pos = self.initial_pos.clone()
-        root_rot = self.initial_rot.clone()
-        # self._bbauvs.set_world_poses(indices=env_ids)
-        self._bbauvs.set_world_poses(positions=root_pos,
-                                     orientations=root_rot,
+     
+        self._bbauvs.set_world_poses(positions=self.initial_pos.clone()[env_ids],
+                                     orientations=self.initial_rot.clone()[env_ids],
                                      indices=env_ids)
         self._bbauvs.set_velocities(velocities=self.initial_vel[env_ids].clone(),
                                     indices=env_ids)
-        # self._bbauvs.set_world_poses(positions=torch.tensor([[0,0,5]]), indices=[1])
-        # self._bbauvs.controller.apply_forces_and_torques_at_pos(forces=self.thrust[env_ids, 0:3],
-        #                                                         torques=self.thrust[env_ids, 3:6],
-        #                                                         indices=env_ids,
-        #                                                         is_global=False)
+
         # parameters for randomizing
-        max_d = 0.1
+        max_d = 0.01
         mass_mean = 30.258
         buoyancy_mean = 34.35
-        var = 3
+        var = 1
         # random mass
         masses = torch_rand_float(mass_mean - var, mass_mean + var, (num_resets, 1), self._device)
-        # self._bbauvs.set_body_masses(values=masses,
-        #                              indices=env_ids,
-        #                              body_indices=torch.Tensor([self._bbauvs.get_body_index("auv4_cog_link")]))
+        self._bbauvs.set_body_masses(values=masses,
+                                     indices=env_ids,
+                                     body_indices=torch.Tensor([self._bbauvs.get_body_index("auv4_cog_link")]))
         cogs = torch_rand_float(-max_d, max_d, (num_resets, 3), device=self._device)
-        # self._bbauvs.set_body_coms(positions=cogs,
-        #                            indices=env_ids,
-        #                            body_indices=torch.Tensor([self._bbauvs.get_body_index("auv4_cog_link")]))
+        self._bbauvs.set_body_coms(positions=cogs,
+                                   indices=env_ids,
+                                   body_indices=torch.Tensor([self._bbauvs.get_body_index("auv4_cog_link")]))
 
         # ramdom inertia
 
