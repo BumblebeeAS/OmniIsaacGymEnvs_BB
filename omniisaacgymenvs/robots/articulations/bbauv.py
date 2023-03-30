@@ -1,5 +1,6 @@
 from typing import Optional
 from omni.isaac.core.robots.robot import Robot
+from omni.isaac.sensor import IMUSensor
 from omni.isaac.core.utils.stage import add_reference_to_stage
 import torch
 import os
@@ -27,3 +28,6 @@ class BBAUV(Robot):
             orientation=orientation,
             articulation_controller=None,
         )
+        imu_path = prim_path + "/auv4_damping_link/imu_sensor"
+        self.imu = IMUSensor(prim_path=imu_path,
+                             name="imu")

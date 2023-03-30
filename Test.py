@@ -59,10 +59,7 @@ for j in range(2000):
             offset[i] = np.transpose(rotmat @ np.transpose(offset[i]))
         # forces[i] = quat_rotate(rot[i], forces[i])
     bbauvs.buoyancy.apply_forces_and_torques_at_pos(forces=forces, positions=offset, is_global=False)
-    bbauvs.set_world_poses(np.array([[0, 0, 4]]), np.array([[1,0,0,0]]), indices=[4])
-    bbauvs.set_velocities(velocities=np.array([[0,0,0,0,0,0]]), indices=[4])
+    print(bbauvs.get_accelerations(dt=0.1))
     my_world.step(render=True)
-    bbauvs.set_world_poses(np.array([[0, 0, 4]]), indices=[4])
-    bbauvs.set_world_poses(np.array([[0, 0, 2]]), indices=[4])
 
 simulation_app.close()

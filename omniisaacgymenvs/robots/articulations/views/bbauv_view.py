@@ -1,7 +1,7 @@
 from typing import Optional
 from omni.isaac.core.articulations import ArticulationView
 from omni.isaac.core.prims import RigidPrimView
-
+import torch
 
 class BBAUVView(ArticulationView):
     def __init__(
@@ -19,3 +19,24 @@ class BBAUVView(ArticulationView):
         self.controller = RigidPrimView(prim_paths_expr="/World/envs/.*/BBAUV/auv4_base_link", name="baselink")
         self.damping = RigidPrimView(prim_paths_expr="/World/envs/.*/BBAUV/auv4_damping_link", name="damping")
         self.disturbance = RigidPrimView(prim_paths_expr="/World/envs/.*/BBAUV/auv4_disturbance_link", name="disturbance")
+
+        self.started = False
+        self.alpha = 0.3  # this some magic number
+
+    def get_accelerations(self, dt,  indices=None, clone=None):
+        '''own implementation to calculate acceleration, referenced UUV simulator
+        https://github.com/uuvsimulator/uuv_simulator/blob/master/uuv_gazebo_plugins/uuv_gazebo_plugins/src/HydrodynamicModel.cc#L102
+        '''
+
+        if not self.started:
+            self.prev_velocities = self.get_velocities(clone=True)
+            self.filtered_accel = torch.zeros_like(self.get_velocities())
+            self.started = True
+        velocity = self.get_velocities()
+        accel = (self.get_velocities(indices=indices) - self.prev_velocities[indices]) / dt
+        self.prev_velocities = velocity
+        self.filtered_accel = (1 - self.alpha) * self.filtered_accel + (self.alpha * accel)
+        if clone:
+            return self.filtered_accel.clone()
+        else:
+            return self.filtered_accel

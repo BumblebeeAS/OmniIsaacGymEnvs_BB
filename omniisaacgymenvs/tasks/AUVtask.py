@@ -36,14 +36,19 @@ class AUVTaskRL(RLTask):
 
         self._indices = torch.arange(self._num_envs, dtype=torch.int64, device=self._device)
 
-        # intialize tensors
+        '''initialize tensors'''
         # buoyancy
         self.buoyancy = torch.zeros((self._num_envs, 3), device=self._device)
+        self.buoyancy[..., 2] = 349
         self.buoyancy_force = torch.zeros((self._num_envs, 3), device=self._device)
         self.cob = torch.zeros((self._num_envs, 3), device=self._device)
         self.buoyancy_offset = torch.zeros((self._num_envs, 3), device=self._device)
 
         # damping
+        self.linear_damping = torch.zeros((self._num_envs, 6, 6), device=self._device)
+        self.quadratic_damping = torch.zeros((self._num_envs, 6, 6), device=self._device)
+        self.added_mass = torch.zeros((self._num_envs, 6, 6), device=self._device)
+
         # disturbance
 
         # controller
@@ -87,7 +92,8 @@ class AUVTaskRL(RLTask):
     def pre_physics_step(self, actions):
         if not self._env._world.is_playing():
             return
-        # print("pre physics step")
+        
+        # reset environments
         reset_env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
 
         if len(reset_env_ids) > 0:
@@ -96,7 +102,8 @@ class AUVTaskRL(RLTask):
             # store action
         actions = actions.clone().to(self._device)
         self.thrust = actions
-        # Apply forces
+
+        '''Apply forces'''
         # apply bouyancy force
         self.buoyancy_force = quat_rotate(quat_conjugate(self.orientation), self.buoyancy)
         # self.buoyancy_offset = quat_rotate(self.orientation, self.cob)
@@ -107,8 +114,8 @@ class AUVTaskRL(RLTask):
         # apply damping forces
 
         # apply controller forces
-        self._bbauvs.controller.apply_forces_and_torques_at_pos(forces=self.thrust[..., 0:3],
-                                                                torques=self.thrust[..., 3:6],
+        self._bbauvs.controller.apply_forces_and_torques_at_pos(forces=(self.thrust[..., 0:3] * 50),
+                                                                torques=(self.thrust[..., 3:6] * 50),
                                                                 is_global=False)
     
     def post_reset(self):
@@ -159,31 +166,31 @@ class AUVTaskRL(RLTask):
                                     indices=env_ids)
 
         # parameters for randomizing
-        max_d = 0.01
+        max_d = 0.1
         mass_mean = 30.258
         buoyancy_mean = 34.35
-        var = 1
+        var = 3
         # random mass
         masses = torch_rand_float(mass_mean - var, mass_mean + var, (num_resets, 1), self._device)
         self._bbauvs.set_body_masses(values=masses,
                                      indices=env_ids,
                                      body_indices=torch.Tensor([self._bbauvs.get_body_index("auv4_cog_link")]))
         cogs = torch_rand_float(-max_d, max_d, (num_resets, 3), device=self._device)
-        self._bbauvs.set_body_coms(positions=cogs,
-                                   indices=env_ids,
-                                   body_indices=torch.Tensor([self._bbauvs.get_body_index("auv4_cog_link")]))
+        # self._bbauvs.set_body_coms(positions=cogs,
+        #                            indices=env_ids,
+        #                            body_indices=torch.Tensor([self._bbauvs.get_body_index("auv4_cog_link")]))
 
         # ramdom inertia
 
         # random cob
         buoyancy = torch_rand_float((buoyancy_mean - 3) * 9.81, (buoyancy_mean + 3) * 9.81, (1,num_resets), self._device)
+
         self.buoyancy[env_ids, 2] = buoyancy
         cobs = torch_rand_float(-max_d, max_d, (num_resets, 3), device=self._device)
         cobs[...,2] -= max_d
         self.cob[env_ids] = cobs
 
         # random disturbance
-        # random damping
         # random damping
         # random added mass
 
