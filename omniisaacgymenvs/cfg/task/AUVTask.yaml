@@ -11,8 +11,10 @@ env:
   clipObservations: 5.0
   clipActions: 1.0
 
+  controlFrequencyInv: 5
+
 sim:
-  dt: 0.01 # 1/20 s
+  dt: 0.01
   use_gpu_pipeline: ${eq:${...pipeline},"gpu"}
   gravity: [0.0, 0.0, -9.81]
   add_ground_plane: True

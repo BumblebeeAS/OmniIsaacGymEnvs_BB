@@ -83,14 +83,6 @@ class AUVTaskRL(RLTask):
         self._sim_config.apply_articulation_settings("bbauv", get_prim_at_path(bbauv.prim_path), self._sim_config.parse_actor_config("BBAUV"))
 
     def get_observations(self):
-        self.position, self.orientation = self._bbauvs.get_world_poses(clone=False)
-        self.velocity_global = self._bbauvs.get_velocities(clone=False)
-        self.instantaneous_velocity[..., 0:3] = quat_rotate(quat_conjugate(self.orientation), self.velocity_global[..., 0:3])
-        self.instantaneous_velocity[..., 3:6] = quat_rotate(quat_conjugate(self.orientation), self.velocity_global[..., 3:6])
-        acceleration = self._bbauvs.get_accelerations(dt=self.dt, indices=self._indices, velocities=self.velocity_global.clone())
-        self.instantaneous_acceleration[..., 0:3] = quat_rotate(quat_conjugate(self.orientation), acceleration[..., 0:3])
-        self.instantaneous_acceleration[..., 3:6] = quat_rotate(quat_conjugate(self.orientation), acceleration[..., 3:6])
-
         self.obs_buf[..., 0:3] = torch.clamp(self.position.clone(), -3, 3)
         self.obs_buf[..., 3:7] = torch.clamp(self.orientation.clone(), -3, 3)
         self.obs_buf[..., 7:13] = torch.clamp(self.instantaneous_velocity.clone(), -3, 3)
@@ -101,11 +93,20 @@ class AUVTaskRL(RLTask):
             }
         }
         return observations
-    
+
+    def get_physics_states(self):
+        self.position, self.orientation = self._bbauvs.get_world_poses(clone=True)
+        self.velocity_global = self._bbauvs.get_velocities(clone=True)
+        self.instantaneous_velocity[..., 0:3] = quat_rotate(quat_conjugate(self.orientation), self.velocity_global[..., 0:3])
+        self.instantaneous_velocity[..., 3:6] = quat_rotate(quat_conjugate(self.orientation), self.velocity_global[..., 3:6])
+        acceleration = self._bbauvs.get_accelerations(dt=self.dt, indices=self._indices, velocities=self.velocity_global.clone())
+        self.instantaneous_acceleration[..., 0:3] = quat_rotate(quat_conjugate(self.orientation), acceleration[..., 0:3])
+        self.instantaneous_acceleration[..., 3:6] = quat_rotate(quat_conjugate(self.orientation), acceleration[..., 3:6])
+
     def pre_physics_step(self, actions):
         if not self._env._world.is_playing():
             return
-        
+
         # reset environments
         reset_env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
 
@@ -116,6 +117,7 @@ class AUVTaskRL(RLTask):
         actions = actions.clone().to(self._device)
         self.thrust = actions
 
+    def apply_hydrodynamics(self):
         '''Apply forces'''
         # apply bouyancy force
         self.buoyancy_force = quat_rotate(quat_conjugate(self.orientation), self.buoyancy)
@@ -126,20 +128,14 @@ class AUVTaskRL(RLTask):
         # # apply disturbances
 
         # apply damping forces
-
-        # damping_forces = (torch.bmm(self.linear_damping, self.instantaneous_velocity.reshape(self._num_envs, 6, 1)) +
-        #                   torch.bmm(self.quadratic_damping, (self.instantaneous_velocity ** 2).reshape(self._num_envs, 6, 1)))
-
-        damping_forces = torch.bmm(self.quadratic_damping,
-                                   (self.instantaneous_velocity.clone().reshape(self._num_envs, 6, 1) * torch.abs(self.instantaneous_velocity.clone().reshape(self._num_envs, 6, 1))))
-
-        # damping_forces = torch.bmm(self.linear_damping, self.instantaneous_velocity.reshape(self._num_envs, 6, 1))
-    
+        lin_damping_forces = torch.bmm(self.linear_damping, self.instantaneous_velocity.reshape(self._num_envs, 6, 1))
+        quad_damping_forces = torch.bmm(self.quadratic_damping,
+                                   (self.instantaneous_velocity.clone().reshape(self._num_envs, 6, 1) * torch.abs(self.instantaneous_velocity.clone().reshape(self._num_envs, 6, 1))))    
         added_mass_forces = torch.bmm(self.added_mass, self.instantaneous_acceleration.reshape(self._num_envs, 6, 1))
-        # added_mass_forces = self.added_mass * self.instantaneous_acceleration
+        # print(quad_damping_forces[0])
+        self.total_damping = - (lin_damping_forces + quad_damping_forces + added_mass_forces).reshape(self._num_envs, 6)
+        # self.total_damping = - (lin_damping_forces + added_mass_forces).reshape(self._num_envs, 6)
 
-        # self.total_damping = - (damping_forces + added_mass_forces).reshape(self._num_envs, 6)
-        self.total_damping = - (damping_forces).reshape(self._num_envs, 6)
 
         self._bbauvs.damping.apply_forces_and_torques_at_pos(forces=self.total_damping[..., 0:3],
                                                              torques=self.total_damping[..., 3:6],
@@ -206,7 +202,7 @@ class AUVTaskRL(RLTask):
         mass_mean = 30.258
         buoyancy_mean = 34.35
         mass_var = 3
-        damping_var = 0.
+        damping_var = 0.1
 
         # random mass
         masses = torch_rand_float(mass_mean - mass_var, mass_mean + mass_var, (num_resets, 1), self._device)

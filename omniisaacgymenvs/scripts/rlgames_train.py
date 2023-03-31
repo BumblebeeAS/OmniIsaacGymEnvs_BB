@@ -33,6 +33,8 @@ from omniisaacgymenvs.utils.rlgames.rlgames_utils import RLGPUAlgoObserver, RLGP
 from omniisaacgymenvs.utils.task_util import initialize_task
 from omniisaacgymenvs.utils.config_utils.path_utils import retrieve_checkpoint_path
 from omniisaacgymenvs.envs.vec_env_rlgames import VecEnvRLGames
+from omniisaacgymenvs.envs.vec_env_rlgames_hydrodynamics import VecEnvHydrodynamics
+
 
 import hydra
 from omegaconf import DictConfig
@@ -95,7 +97,10 @@ def parse_hydra_configs(cfg: DictConfig):
         cfg.device_id = rank
         cfg.rl_device = f'cuda:{rank}'
     enable_viewport = "enable_cameras" in cfg.task.sim and cfg.task.sim.enable_cameras
-    env = VecEnvRLGames(headless=headless, sim_device=cfg.device_id, enable_livestream=cfg.enable_livestream, enable_viewport=enable_viewport)
+    if cfg.task.name == "AUVTask":
+        env = VecEnvHydrodynamics(headless=headless, sim_device=cfg.device_id, enable_livestream=cfg.enable_livestream, enable_viewport=enable_viewport)
+    else:
+        env = VecEnvRLGames(headless=headless, sim_device=cfg.device_id, enable_livestream=cfg.enable_livestream, enable_viewport=enable_viewport)
 
     # ensure checkpoints can be specified as relative paths
     if cfg.checkpoint:

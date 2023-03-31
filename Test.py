@@ -56,14 +56,14 @@ for j in range(2000):
     vel_local = torch.zeros((num_env, 6))
     vel_local[..., 0:3] = quat_rotate(quat_conjugate(rot), vel[..., 0:3])
     vel_local[..., 3:6] = quat_rotate(quat_conjugate(rot), vel[..., 3:6])
-    print(vel_local[3])
+    # print(vel_local[3])
     offset = torch.tensor([[0, 0 if i % 2 else 0, 0.2 if i % 2 else 0] for i in range(num_env)])
     bouyancy_forces = quat_rotate(quat_conjugate(rot), bouyancy_forces) 
     bbauvs.buoyancy.apply_forces_and_torques_at_pos(forces=bouyancy_forces, positions=offset, is_global=False)
+    bbauvs.set_world_poses(positions=torch.tensor([[0., 0., 2.]]), indices=[5])
 
     bbauvs.controller.apply_forces(forces=torch.tensor([20., 0., 0.]), indices=[3], is_global=True)
     bbauvs.damping.apply_forces_and_torques_at_pos(torques=torch.tensor([0., 0., 5]), indices=[3])
-
     my_world.step(render=True)
 
 simulation_app.close()
