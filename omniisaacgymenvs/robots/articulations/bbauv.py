@@ -28,6 +28,6 @@ class BBAUV(Robot):
             orientation=orientation,
             articulation_controller=None,
         )
-        imu_path = prim_path + "/auv4_damping_link/imu_sensor"
-        self.imu = IMUSensor(prim_path=imu_path,
-                             name="imu")
+        # imu_path = prim_path + "/auv4_damping_link/imu_sensor"
+        # self.imu = IMUSensor(prim_path=imu_path,
+        #                      name="imu")

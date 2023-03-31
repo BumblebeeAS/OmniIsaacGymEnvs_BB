@@ -23,18 +23,17 @@ class BBAUVView(ArticulationView):
         self.started = False
         self.alpha = 0.3  # this some magic number
 
-    def get_accelerations(self, dt,  indices=None, clone=None):
+    def get_accelerations(self, dt,  indices, velocities, clone=None):
         '''own implementation to calculate acceleration, referenced UUV simulator
         https://github.com/uuvsimulator/uuv_simulator/blob/master/uuv_gazebo_plugins/uuv_gazebo_plugins/src/HydrodynamicModel.cc#L102
         '''
 
         if not self.started:
             self.prev_velocities = self.get_velocities(clone=True)
-            self.filtered_accel = torch.zeros_like(self.get_velocities())
+            self.filtered_accel = torch.zeros_like(self.prev_velocities)
             self.started = True
-        velocity = self.get_velocities()
-        accel = (self.get_velocities(indices=indices) - self.prev_velocities[indices]) / dt
-        self.prev_velocities = velocity
+        accel = (velocities - self.prev_velocities[indices][0]) / dt
+        self.prev_velocities = velocities
         self.filtered_accel = (1 - self.alpha) * self.filtered_accel + (self.alpha * accel)
         if clone:
             return self.filtered_accel.clone()
