@@ -39,17 +39,11 @@ from omni.isaac.core.utils.prims import get_prim_at_path
 import numpy as np
 import torch
 
-EPS = 1e-6   # small constant to avoid divisions by 0 and log(0)
+EPS = 1e-6  # small constant to avoid divisions by 0 and log(0)
 
 
 class CrazyflieTask(RLTask):
-    def __init__(
-            self,
-            name,
-            sim_config,
-            env,
-            offset=None
-    ) -> None:
+    def __init__(self, name, sim_config, env, offset=None) -> None:
         self._sim_config = sim_config
         self._cfg = sim_config.config
         self._task_cfg = sim_config.task_config
@@ -90,7 +84,7 @@ class CrazyflieTask(RLTask):
 
         self.motor_assymetry = np.array([1.0, 1.0, 1.0, 1.0])
         # re-normalizing to sum-up to 4
-        self.motor_assymetry = self.motor_assymetry * 4. / np.sum(self.motor_assymetry)
+        self.motor_assymetry = self.motor_assymetry * 4.0 / np.sum(self.motor_assymetry)
 
         self.grav_z = -1.0 * self._task_cfg["sim"]["gravity"][2]
         thrust_max = self.grav_z * self.mass * self.thrust_to_weight * self.motor_assymetry / 4.0
@@ -109,10 +103,16 @@ class CrazyflieTask(RLTask):
         self.extras = {}
 
         torch_zeros = lambda: torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
-        self.episode_sums = {"rew_pos": torch_zeros(), "rew_orient": torch_zeros(), "rew_effort": torch_zeros(),
-                             "rew_spin": torch_zeros(),
-                             "raw_dist": torch_zeros(), "raw_orient": torch_zeros(), "raw_effort": torch_zeros(),
-                             "raw_spin": torch_zeros()}
+        self.episode_sums = {
+            "rew_pos": torch_zeros(),
+            "rew_orient": torch_zeros(),
+            "rew_effort": torch_zeros(),
+            "rew_spin": torch_zeros(),
+            "raw_dist": torch_zeros(),
+            "raw_orient": torch_zeros(),
+            "raw_effort": torch_zeros(),
+            "raw_spin": torch_zeros(),
+        }
         return
 
     def set_up_scene(self, scene) -> None:
@@ -128,10 +128,12 @@ class CrazyflieTask(RLTask):
         return
 
     def get_crazyflie(self):
-        copter = Crazyflie(prim_path=self.default_zero_env_path + "/Crazyflie", name="crazyflie",
-                           translation=self._crazyflie_position)
-        self._sim_config.apply_articulation_settings("crazyflie", get_prim_at_path(copter.prim_path),
-                                                     self._sim_config.parse_actor_config("crazyflie"))
+        copter = Crazyflie(
+            prim_path=self.default_zero_env_path + "/Crazyflie", name="crazyflie", translation=self._crazyflie_position
+        )
+        self._sim_config.apply_articulation_settings(
+            "crazyflie", get_prim_at_path(copter.prim_path), self._sim_config.parse_actor_config("crazyflie")
+        )
 
     def get_target(self):
         radius = 0.2
@@ -141,9 +143,11 @@ class CrazyflieTask(RLTask):
             translation=self._ball_position,
             name="target_0",
             radius=radius,
-            color=color)
-        self._sim_config.apply_articulation_settings("ball", get_prim_at_path(ball.prim_path),
-                                                     self._sim_config.parse_actor_config("ball"))
+            color=color,
+        )
+        self._sim_config.apply_articulation_settings(
+            "ball", get_prim_at_path(ball.prim_path), self._sim_config.parse_actor_config("ball")
+        )
         ball.set_collision_enabled(False)
 
     def get_observations(self) -> dict:
@@ -169,11 +173,7 @@ class CrazyflieTask(RLTask):
         self.obs_buf[..., 12:15] = root_linvels
         self.obs_buf[..., 15:18] = root_angvels
 
-        observations = {
-            self._copters.name: {
-                "obs_buf": self.obs_buf
-            }
-        }
+        observations = {self._copters.name: {"obs_buf": self.obs_buf}}
         return observations
 
     def pre_physics_step(self, actions) -> None:
@@ -201,9 +201,9 @@ class CrazyflieTask(RLTask):
         motor_tau[motor_tau > 1.0] = 1.0
 
         # Since NN commands thrusts we need to convert to rot vel and back
-        thrust_rot = thrust_cmds ** 0.5
+        thrust_rot = thrust_cmds**0.5
         self.thrust_rot_damp = motor_tau * (thrust_rot - self.thrust_rot_damp) + self.thrust_rot_damp
-        self.thrust_cmds_damp = self.thrust_rot_damp ** 2
+        self.thrust_cmds_damp = self.thrust_rot_damp**2
 
         ## Adding noise
         thrust_noise = 0.01 * torch.randn(4, dtype=torch.float32, device=self._device)
@@ -318,13 +318,11 @@ class CrazyflieTask(RLTask):
         self.thrust_cmds_damp[env_ids] = 0
         self.thrust_rot_damp[env_ids] = 0
 
-
         # fill extras
         self.extras["episode"] = {}
         for key in self.episode_sums.keys():
-            self.extras["episode"][key] = torch.mean(
-                self.episode_sums[key][env_ids]) / self._max_episode_length
-            self.episode_sums[key][env_ids] = 0.
+            self.extras["episode"][key] = torch.mean(self.episode_sums[key][env_ids]) / self._max_episode_length
+            self.episode_sums[key][env_ids] = 0.0
 
     def calculate_metrics(self) -> None:
         root_positions = self.root_pos - self._env_pos
@@ -352,7 +350,6 @@ class CrazyflieTask(RLTask):
 
         # combined reward
         self.rew_buf[:] = pos_reward + pos_reward * (up_reward + spin_reward) - effort_reward
-
 
         # log episode reward sums
         self.episode_sums["rew_pos"] += pos_reward

@@ -22,8 +22,8 @@ params:
           val: 0
         fixed_sigma: True
     mlp:
-      units: [512, 256, 128]
-      activation: elu
+      units: [256, 128]
+      activation: tanh
       
       initializer:
         name: default
@@ -33,7 +33,7 @@ params:
     #   name: lstm
     #   units: 1024
     #   layers: 1
-    #   before_mlp: False
+    #   before_mlp: True
     #   layer_norm: True
 
   load_checkpoint: ${if:${...checkpoint},True,False} # flag which sets whether to load the checkpoint
