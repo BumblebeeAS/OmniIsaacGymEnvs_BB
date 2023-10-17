@@ -87,16 +87,16 @@ class AUVTaskRL(RLTask):
         # controller
         self.thrust = torch.zeros((self._num_envs, 6), device=self._device)
         self.prev_effort = torch.zeros((self._num_envs, 6), device=self._device)
-        self.force_multiplier = 50
-        self.torque_multiplier = 10
+        self.force_multiplier = 35
+        self.torque_multiplier = 5
 
-        if self.position.size(dim=0) == 1:
-            self.x_plot = torch.zeros(self._max_episode_length -2, device=self._device)
-            self.y_plot = torch.zeros(self._max_episode_length -2, device=self._device)
-            self.z_plot = torch.zeros(self._max_episode_length -2, device=self._device)
-            self.xang_plot = torch.zeros(self._max_episode_length - 2, device=self._device)
-            self.yang_plot = torch.zeros(self._max_episode_length - 2, device=self._device)
-            self.zang_plot = torch.zeros(self._max_episode_length - 2, device=self._device)
+        if self.position.size(dim=0) == 4:
+            self.x_plot = torch.zeros(( self._max_episode_length -2, 4), device=self._device)
+            self.y_plot = torch.zeros(( self._max_episode_length -2, 4), device=self._device)
+            self.z_plot = torch.zeros(( self._max_episode_length -2, 4), device=self._device)
+            self.xang_plot = torch.zeros((self._max_episode_length - 2,4), device=self._device)
+            self.yang_plot = torch.zeros((self._max_episode_length - 2,4), device=self._device)
+            self.zang_plot = torch.zeros((self._max_episode_length - 2,4), device=self._device)
             self.plot_step = 0
         
 
@@ -141,16 +141,16 @@ class AUVTaskRL(RLTask):
 
     def get_observations(self):
         pos_error = self.position - self.ball_positions
-        if self.position.size(dim=0) == 1 and self.plot_step < self._max_episode_length- 2:
-            self.x_plot[self.plot_step] = pos_error[0,0]
-            self.y_plot[self.plot_step] = pos_error[0,1]
-            self.z_plot[self.plot_step] = pos_error[0,2]
+        if self.position.size(dim=0) == 4 and self.plot_step < self._max_episode_length- 2:
+            self.x_plot[self.plot_step] = pos_error[...,0]
+            self.y_plot[self.plot_step] = pos_error[...,1]
+            self.z_plot[self.plot_step] = pos_error[...,2]
             # euler_x, euler_y, euler_z = get_euler_xyz_wrapped(self.orientation)
             self.xang_plot[self.plot_step] = self.roll
             self.yang_plot[self.plot_step] = self.pitch
             self.zang_plot[self.plot_step] = self.yaw
             self.plot_step += 1
-        if self.position.size(dim=0) == 1 and self.plot_step == self._max_episode_length -2:
+        if self.position.size(dim=0) == 4 and self.plot_step == self._max_episode_length -2:
             self.plot_graph()
             # print(self.xang_plot[-1]
             self.plot_step +=1
@@ -241,9 +241,11 @@ class AUVTaskRL(RLTask):
 
         # apply controller forces
         # print(self.thrust)
+        torque = self.thrust[..., 3:6]
+        torque[...,2] *= 2
         self._bbauvs.controller.apply_forces_and_torques_at_pos(
             forces=(self.thrust[..., 0:3] * self.force_multiplier),
-            torques=(self.thrust[..., 3:6] * self.torque_multiplier),
+            torques=(torque * self.torque_multiplier),
             is_global=False,
         )
 
@@ -261,7 +263,6 @@ class AUVTaskRL(RLTask):
 
     def calculate_metrics(self):
         # print("calculate metrics")
-        # copied from crazyflie example
         self.counter += 1
 
         # pos reward
@@ -291,8 +292,7 @@ class AUVTaskRL(RLTask):
         spin_reward = 0.1 * torch.exp(-1.0 * spin)
 
         # self.rew_buf[:] = pos_reward - effort_reward
-        self.rew_buf[:] = pos_reward + 10 * up_reward * pos_reward + forward_reward * pos_reward + effort_change_reward
-
+        self.rew_buf[:] = pos_reward + 10 * up_reward * pos_reward + forward_reward * pos_reward
         """new rewards function"""
         # position reward
         # self.target_dist = torch.sqrt(torch.square(self.initial_pos - self.position).sum(-1))
@@ -301,11 +301,12 @@ class AUVTaskRL(RLTask):
         # orientation reward
 
     def reset_idx(self, env_ids):
-        noise = 1
+        noise = 0
         num_resets = len(env_ids)
         # reset robots
         root_pos = self.ball_positions.clone()
-        curriculum = (min(1, self.counter/500000)) if (self.test == False) else 1
+        curriculum = (min(1, self.counter/20000)) if (self.test == False) else 0.5
+        # print(curriculum)
 
         root_pos[env_ids, 0] += torch_rand_float(-0.5, 0.5, (num_resets, 1), device=self._device).view(-1)
         root_pos[env_ids, 1] += torch_rand_float(-0.5, 0.5, (num_resets, 1), device=self._device).view(-1)
@@ -314,7 +315,8 @@ class AUVTaskRL(RLTask):
         # curriculum = min(1, self.counter/500000)
 
         euler_angles = torch.zeros((self._num_envs, 3), device=self._device)
-        euler_angles[env_ids,2] += torch_rand_float(-3.14 *curriculum, 3.14 * curriculum, (num_resets, 1), device=self._device).view(-1)
+        euler_angles[env_ids,2] += torch_rand_float(-3.14 /2, 3.14 /2, (num_resets, 1), device=self._device).view(-1)
+        # euler_angles[env_ids,2] += torch.clamp(torch.normal(torch.zeros((num_resets,1), device=self._device), curriculum).view(-1), -3.14, 3.14)
         root_rot = euler_angles_to_quats(euler_angles, device=self._device)
         self._bbauvs.set_world_poses(
             positions=root_pos[env_ids], orientations=root_rot[env_ids], indices=env_ids
@@ -395,50 +397,76 @@ class AUVTaskRL(RLTask):
         self.xang_plot.to(device='cpu')
         self.yang_plot.to(device='cpu')
         self.zang_plot.to(device='cpu')
-        steps = torch.arange(0, self._max_episode_length -2)
+        steps = np.arange(0, self._max_episode_length -2) * 0.05
         plt.figure(figsize=(12, 8))
 
+        plotx = torch.transpose(self.x_plot.cpu(), 0 ,1)
+        ploty = torch.transpose(self.y_plot.cpu(), 0 ,1)
+        plotz = torch.transpose(self.z_plot.cpu(), 0 ,1)
+        plotr = torch.transpose(self.xang_plot.cpu(), 0 ,1)
+        plotp = torch.transpose(self.yang_plot.cpu(), 0 ,1)
+        plotyw = torch.transpose(self.zang_plot.cpu(), 0 ,1)
+        # plot = torch.transpose(self.x_plot, 0 ,1)
+
         plt.subplot(3, 2, 1)
-        plt.plot(steps, self.x_plot.cpu())
-        plt.xlabel('Steps')
-        plt.ylabel('X Error')
+        plt.plot(steps,plotx[0], color='r')
+        plt.plot(steps,plotx[1], color='g')
+        plt.plot(steps,plotx[2], color='b')
+        plt.plot(steps,plotx[3], color='y')
+        plt.xlabel('Time(s)')
+        plt.ylabel('X Error(m)')
         plt.title('X Error')
 
         plt.subplot(3, 2, 2)
-        plt.plot(steps, self.y_plot.cpu())
-        plt.xlabel('Steps')
-        plt.ylabel('Y Error')
+        plt.plot(steps,ploty[0], color='r')
+        plt.plot(steps,ploty[1], color='g')
+        plt.plot(steps,ploty[2], color='b')
+        plt.plot(steps,ploty[3], color='y')
+        plt.xlabel('Time(s)')
+        plt.ylabel('Y Error(m)')
         plt.title('Y Error')
 
         plt.subplot(3, 2, 3)
-        plt.plot(steps, self.z_plot.cpu())
-        plt.xlabel('Steps')
-        plt.ylabel('Z Error')
+        plt.plot(steps,plotz[0], color='r')
+        plt.plot(steps,plotz[1], color='g')
+        plt.plot(steps,plotz[2], color='b')
+        plt.plot(steps,plotz[3], color='y')       
+        plt.xlabel('Time(s)')
+        plt.ylabel('Z Error(m)')
         plt.title('Z Error')
 
         plt.subplot(3, 2, 4)
-        plt.plot(steps, self.xang_plot.cpu())
-        plt.xlabel('Steps')
-        plt.ylabel('Roll Error')
+        plt.plot(steps,plotr[0], color='r')
+        plt.plot(steps,plotr[1], color='g')
+        plt.plot(steps,plotr[2], color='b')
+        plt.plot(steps,plotr[3], color='y')        
+        plt.xlabel('Time(s)')
+        plt.ylabel('Roll Error(rad)')
         plt.title('Roll Error')
 
         plt.subplot(3, 2, 5)
-        plt.plot(steps, self.yang_plot.cpu())
-        plt.xlabel('Steps')
-        plt.ylabel('Pitch Error')
+        plt.plot(steps,plotp[0], color='r')
+        plt.plot(steps,plotp[1], color='g')
+        plt.plot(steps,plotp[2], color='b')
+        plt.plot(steps,plotp[3], color='y')        
+        plt.xlabel('Time(s)')
+        plt.ylabel('Pitch Error(rad)')
         plt.title('Pitch Error')
 
         plt.subplot(3, 2, 6)
-        plt.plot(steps, self.zang_plot.cpu())
-        plt.xlabel('Steps')
-        plt.ylabel('Yaw Error')
+        plt.plot(steps,plotyw[0], color='r')
+        plt.plot(steps,plotyw[1], color='g')
+        plt.plot(steps,plotyw[2], color='b')
+        plt.plot(steps,plotyw[3], color='y')        
+        plt.xlabel('Time(s)')
+        plt.ylabel('Yaw Error(rad)')
         plt.title('Yaw Error')
 
         plt.suptitle('Error Plots')
         plt.tight_layout()  # Adjust layout to prevent overlapping labels
 
         # Save the plots as PNG files
-        plt.savefig('error_plots.jpg')
+        plt.savefig(self._name + '.jpg')
         # plt.show()
 
 
@@ -448,6 +476,7 @@ def torch_rand_mat(lower, upper, shape, device):
     # return (upper - lower) * torch.rand(*shape, device=device) + lower
     return torch.zeros(*shape, device=device) + upper
 
+@torch.jit.script
 def get_euler_xyz_wrapped(q):
     qw, qx, qy, qz = 0, 1, 2, 3
     # roll (x-axis rotation)

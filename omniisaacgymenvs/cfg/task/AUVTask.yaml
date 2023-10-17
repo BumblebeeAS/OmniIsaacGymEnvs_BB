@@ -3,9 +3,9 @@ name: AUVTask
 physics_engine: ${..physics_engine}
 
 env:
-  numEnvs: ${resolve_default:1024,${...num_envs}}
+  numEnvs: ${resolve_default:4096,${...num_envs}} #${resolve_default:1024,${...num_envs}}
   envSpacing: 1
-  maxEpisodeLength: 700
+  maxEpisodeLength: 300 #700
   enableDebugVis: False
 
   clipObservations: 5.0
