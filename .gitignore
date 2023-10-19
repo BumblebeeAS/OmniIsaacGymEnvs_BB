@@ -5,3 +5,7 @@ omniisaacgymenvs.egg-info/
 checkpoints
 omniisaacgymenvs/wandb
 omniisaacgymenvs/scripts/wandb
+omniisaacgymenvs/scripts/reward_shaping/runs
+omniisaacgymenvs/scripts/reward_shaping/wandb
+omniisaacgymenvs/scripts/new_rewards/runs
+omniisaacgymenvs/scripts/new_rewards/wandb

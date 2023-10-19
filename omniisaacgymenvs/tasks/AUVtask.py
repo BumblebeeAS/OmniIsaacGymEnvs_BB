@@ -35,6 +35,7 @@ class AUVTaskRL(RLTask):
         self._max_episode_length = self._task_cfg["env"]["maxEpisodeLength"]
 
         self.dt = self._task_cfg["sim"]["dt"]
+        self._experiment_name = self._task_cfg["experiment_name"]
 
         self._num_observations = 18
         self._num_actions = 6
@@ -160,7 +161,7 @@ class AUVTaskRL(RLTask):
         self.obs_buf[..., 4] = self.pitch.clone() / torch.pi
         self.obs_buf[..., 5] = self.yaw.clone() / torch.pi
         self.obs_buf[..., 6:12] = torch.clamp(self.instantaneous_velocity.clone(), -3, 3)
-        self.obs_buf[..., 12:19] = self.thrust.clone()
+        self.obs_buf[..., 12:18] = self.thrust.clone()
 
 
         # self.obs_buf[..., 0:3] = torch.clamp(pos_error.clone(), -3, 3)
@@ -170,6 +171,9 @@ class AUVTaskRL(RLTask):
         # self.obs_buf[..., 12:18] = torch.clamp(self.instantaneous_velocity.clone(), -3, 3)
         # self.obs_buf[..., 18:24] = self.thrust.clone()
         # print('observation', self.obs_buf[0])
+        # self.obs_buf[...,0:18] = torch.ones(18,device=self._device)
+        # print(self.thrust[0])
+        # print(self.obs_buf[0])
         observations = {self._bbauvs.name: {"obs_buf": self.obs_buf}}
         return observations
 
@@ -241,13 +245,14 @@ class AUVTaskRL(RLTask):
 
         # apply controller forces
         # print(self.thrust)
-        torque = self.thrust[..., 3:6]
+        torque = self.thrust[..., 3:6].clone()
         torque[...,2] *= 2
         self._bbauvs.controller.apply_forces_and_torques_at_pos(
             forces=(self.thrust[..., 0:3] * self.force_multiplier),
             torques=(torque * self.torque_multiplier),
             is_global=False,
         )
+        # print("test1", self.thrust)
 
     def post_reset(self):
         # print("post reset")
@@ -267,7 +272,7 @@ class AUVTaskRL(RLTask):
 
         # pos reward
         self.target_dist = torch.sqrt(torch.square(self.ball_positions - self.position).sum(-1))
-        pos_reward = 2 / (1 + self.target_dist)
+        pos_reward = 1 / (1 + self.target_dist)
 
         # orient reward
         ups = quat_axis(self.orientation, 2)
@@ -281,18 +286,31 @@ class AUVTaskRL(RLTask):
 
         # effort reward
         effort = torch.square(self.thrust).sum(-1)
-        effort_reward = 0.01 * torch.exp(-0.5 * effort)
+        effort_reward = torch.exp(-0.5 * effort)
+
+        #inv effort
+        inv_effort = 1/(1 +effort)
 
         # effort change reward
         effort_change = torch.square(self.thrust - self.prev_effort).sum(-1)
         effort_change_reward = 0.1 * torch.exp(-0.5 * effort_change)
 
         # # spin reward
-        spin = torch.square(self.velocity_global[:, 3:]).sum(-1)
-        spin_reward = 0.1 * torch.exp(-1.0 * spin)
+        spin = torch.square(self.velocity_global[:, 3:]).sum(-1)    
+        spin_reward =  torch.exp(-1.0 * spin)
+
+        rp_spin = torch.square(self.instantaneous_velocity[:,3:5]).sum(-1)
+        rp_spin_reward = torch.exp(-1.0 * rp_spin)
+
+        # yaw_spin = torch.square(self.velocity_global[:,5].sum(-1)
+                                  
+
+        vel = torch.square(self.instantaneous_velocity[...,0:3]).sum(-1)
+        vel_reward = torch.exp(-1.0 * vel)
 
         # self.rew_buf[:] = pos_reward - effort_reward
-        self.rew_buf[:] = pos_reward + 10 * up_reward * pos_reward + forward_reward * pos_reward
+        self.rew_buf[:] = (pos_reward) + (10 * pos_reward * up_reward) + (5 * pos_reward * forward_reward) + (1 *spin_reward) +(0.5  * inv_effort)
+        # self.rew_buf[:] = 5 * pos_reward * up_reward+ 10 * up_reward* forward_reward + 5* forward_reward * pos_reward +  spin_reward + inv_effort 
         """new rewards function"""
         # position reward
         # self.target_dist = torch.sqrt(torch.square(self.initial_pos - self.position).sum(-1))
@@ -466,7 +484,7 @@ class AUVTaskRL(RLTask):
         plt.tight_layout()  # Adjust layout to prevent overlapping labels
 
         # Save the plots as PNG files
-        plt.savefig(self._name + '.jpg')
+        plt.savefig(self._experiment_name + '.jpg')
         # plt.show()
 
 
