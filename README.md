@@ -1,3 +1,29 @@
+# Onmniverse Gym for Bumblebee AUV
+## Notes
+To export saved NN to a torchscript module to be used in cpp, modify the save() function in rl_games a2c_continuous.py with
+````
+if self.is_rnn:
+            inputs = {
+                'obs' : torch.zeros((1,) + self.obs_shape).to(self.ppo_device),
+                'rnn_states' : (torch.zeros(1,1,self.rnn_states[0].size(dim=2)).to(self.ppo_device), torch.zeros(1,1,self.rnn_states[0].size(dim=2)).to(self.ppo_device))
+                # 'rnn_states' : self.rnn_states
+            }
+        else:
+            inputs = {
+                'obs' : torch.zeros((1,) + self.obs_shape).to(self.ppo_device)
+            }
+        with torch.no_grad():
+            adapter = flatten.TracingAdapter(ModelWrapper(self.model), inputs,allow_non_tensor=True)
+            traced = torch.jit.trace(adapter, adapter.flattened_inputs,check_trace=False)
+            # flattened_outputs = traced(*adapter.flattened_inputs)
+            # print(adapter.flattened_inputs, "test")
+            # print(flattened_outputs, "HEREEEEEEEEEEEE")
+            traced.cpu()
+            traced.save(fn + ".pt")
+            traced.cuda()
+        print("saving scripted model as ", fn, ".pt")
+````
+
 # Omniverse Isaac Gym Reinforcement Learning Environments for Isaac Sim
 
 ## About this repository
