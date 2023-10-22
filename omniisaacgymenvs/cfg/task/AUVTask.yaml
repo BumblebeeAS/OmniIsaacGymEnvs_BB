@@ -4,6 +4,10 @@ physics_engine: ${..physics_engine}
 
 experiment_name: AUVTask
 
+domain_random:
+  curriculum: False
+  scale: 1.0
+
 env:
   numEnvs: ${resolve_default:4096,${...num_envs}} #${resolve_default:1024,${...num_envs}}
   envSpacing: 1

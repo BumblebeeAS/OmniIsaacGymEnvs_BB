@@ -32,11 +32,11 @@ params:
       regularizer:
         name: None
     # rnn:
-      # name: lstm
-      # units: 128
-      # layers: 1
-      # before_mlp: True
-      # layer_norm: True
+    #   name: lstm
+    #   units: 64
+    #   layers: 1
+    #   before_mlp: True
+    #   layer_norm: True
 
   load_checkpoint: ${if:${...checkpoint},True,False} # flag which sets whether to load the checkpoint
   load_path: ${...checkpoint} # path to the checkpoint to load
@@ -56,14 +56,14 @@ params:
     reward_shaper:
       scale_value: 0.1
     normalize_advantage: True
-    gamma: 0.99
+    gamma: 0.95
     tau: 0.95
     learning_rate: 3e-4
     lr_schedule: adaptive
     kl_threshold: 0.008
     score_to_win: 16800
     max_epochs: ${resolve_default:1000,${....max_iterations}}
-    save_best_after: 500
+    save_best_after: 600
     save_frequency: 25
     grad_norm: 1.0
     entropy_coef: 0.0

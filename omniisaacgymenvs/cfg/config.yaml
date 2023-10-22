@@ -25,6 +25,7 @@ sim_device: 'gpu'
 device_id: 0
 # device to run RL
 rl_device: 'cuda:0'
+# rl_device: 'cpu'
 # multi-GPU training
 multi_gpu: False
 
@@ -53,7 +54,7 @@ wandb_project: 'omniisaacgymenvs'
 
 # set default task and default training config based on task
 defaults:
-  - task: Cartpole
+  - task: AUVTask
   - train: ${task}PPO
   - hydra/job_logging: disabled
 

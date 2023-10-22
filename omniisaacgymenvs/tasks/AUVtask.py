@@ -20,6 +20,8 @@ from omniisaacgymenvs.robots.articulations.views.bbauv_view import BBAUVView
 from omniisaacgymenvs.robots.articulations.crazyflie import Crazyflie
 from omniisaacgymenvs.robots.articulations.views.crazyflie_view import CrazyflieView
 
+import sys
+
 
 class AUVTaskRL(RLTask):
     def __init__(self, name, sim_config, env, offset=None) -> None:
@@ -36,6 +38,11 @@ class AUVTaskRL(RLTask):
 
         self.dt = self._task_cfg["sim"]["dt"]
         self._experiment_name = self._task_cfg["experiment_name"]
+
+        ''' for Domain Randomization training'''
+        self.dr_curr = self._task_cfg["domain_random"]["curriculum"]
+        self.dr_scale = self._task_cfg["domain_random"]["scale"]
+
 
         self._num_observations = 18
         self._num_actions = 6
@@ -173,7 +180,7 @@ class AUVTaskRL(RLTask):
         # print('observation', self.obs_buf[0])
         # self.obs_buf[...,0:18] = torch.ones(18,device=self._device)
         # print(self.thrust[0])
-        # print(self.obs_buf[0])
+        # print(self.obs_buf[0, 12:18])
         observations = {self._bbauvs.name: {"obs_buf": self.obs_buf}}
         return observations
 
@@ -319,22 +326,44 @@ class AUVTaskRL(RLTask):
         # orientation reward
 
     def reset_idx(self, env_ids):
-        noise = 0
+
         num_resets = len(env_ids)
         # reset robots
         root_pos = self.ball_positions.clone()
-        curriculum = (min(1, self.counter/20000)) if (self.test == False) else 0.5
-        # print(curriculum)
+        # print(self.counter)
+        curriculum = (min(1, self.counter/5000)) if (self.test == False) else 1
 
-        root_pos[env_ids, 0] += torch_rand_float(-0.5, 0.5, (num_resets, 1), device=self._device).view(-1)
-        root_pos[env_ids, 1] += torch_rand_float(-0.5, 0.5, (num_resets, 1), device=self._device).view(-1)
-        root_pos[env_ids, 2] += torch_rand_float(-0.5, 0.5, (num_resets, 1), device=self._device).view(-1)
+        if self.dr_curr: 
+            noise = self.dr_scale * curriculum
+        else:
+            noise = self.dr_scale 
+        if self.position.size(dim=0) == 4:
+            noise = 0
+
+        pos_min = 0.5
+        pos_max = 1
+
+        yaw_min = 0.5
+        yaw_max = 1
+
+        pos_std = curriculum * (pos_max - pos_min) + pos_min
+        yaw_std = curriculum * (yaw_max - yaw_min) + pos_min
+
+        # root_pos[env_ids, 0] += torch_rand_float(-0.5, 0.5, (num_resets, 1), device=self._device).view(-1)
+        # root_pos[env_ids, 1] += torch_rand_float(-0.5, 0.5, (num_resets, 1), device=self._device).view(-1)
+        # root_pos[env_ids, 2] += torch_rand_float(-0.5, 0.5, (num_resets, 1), device=self._device).view(-1)
+        # root_pos[env_ids, 0] -= torch.ones((num_resets, 1), device=self._device).view(-1)
+        root_pos[env_ids, 0] += torch.normal(torch.zeros((num_resets, 1), device=self._device), pos_std).view(-1)
+        root_pos[env_ids, 1] += torch.normal(torch.zeros((num_resets, 1), device=self._device), pos_std).view(-1)
+        root_pos[env_ids, 2] += torch.normal(torch.zeros((num_resets, 1), device=self._device), pos_std).view(-1)
+
 
         # curriculum = min(1, self.counter/500000)
 
         euler_angles = torch.zeros((self._num_envs, 3), device=self._device)
-        euler_angles[env_ids,2] += torch_rand_float(-3.14 /2, 3.14 /2, (num_resets, 1), device=self._device).view(-1)
-        # euler_angles[env_ids,2] += torch.clamp(torch.normal(torch.zeros((num_resets,1), device=self._device), curriculum).view(-1), -3.14, 3.14)
+        # euler_angles[env_ids,2] += torch_rand_float(-3.14 /2, 3.14 /2, (num_resets, 1), device=self._device).view(-1)
+        euler_angles[env_ids,2] += torch.clamp(torch.normal(torch.zeros((num_resets,1), device=self._device), yaw_std).view(-1), -3.14, 3.14)
+        # euler_angles[env_ids,2] -= torch.ones((num_resets,1), device=self._device).view(-1) *2
         root_rot = euler_angles_to_quats(euler_angles, device=self._device)
         self._bbauvs.set_world_poses(
             positions=root_pos[env_ids], orientations=root_rot[env_ids], indices=env_ids
@@ -396,7 +425,7 @@ class AUVTaskRL(RLTask):
         die = torch.zeros_like(self.reset_buf)
 
         # reset if too far from initial
-        die = torch.where(self.target_dist > 2, ones, die)
+        # die = torch.where(self.target_dist > 4, ones, die)
 
         # reset if upside down
         die = torch.where(self.orient_z < 0.0, ones, die)
@@ -486,13 +515,14 @@ class AUVTaskRL(RLTask):
         # Save the plots as PNG files
         plt.savefig(self._experiment_name + '.jpg')
         # plt.show()
+        sys.exit(0)
 
 
 @torch.jit.script
 def torch_rand_mat(lower, upper, shape, device):
     # type: (float, float, Tuple[int, int,int], str) -> Tensor
-    # return (upper - lower) * torch.rand(*shape, device=device) + lower
-    return torch.zeros(*shape, device=device) + upper
+    return (upper - lower) * torch.rand(*shape, device=device) + lower
+    # return torch.zeros(*shape, device=device) + upper
 
 @torch.jit.script
 def get_euler_xyz_wrapped(q):
